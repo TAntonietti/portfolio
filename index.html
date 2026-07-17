@@ -188,33 +188,51 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     var mouse = { x: -999, y: -999 };
     var smooth = { x: -999, y: -999 };
+    var hovering = false;
     var carouselOpen = false;
+    var rafId = null;
 
     function loop(){
-      smooth.x += (mouse.x - smooth.x) * 0.1;
-      smooth.y += (mouse.y - smooth.y) * 0.1;
+      var targetX = hovering ? mouse.x : -999;
+      var targetY = hovering ? mouse.y : -999;
+      smooth.x += (targetX - smooth.x) * 0.1;
+      smooth.y += (targetY - smooth.y) * 0.1;
       if(!carouselOpen){
         // Cheap: just move the mask's center via CSS custom properties.
         // (No canvas/toDataURL redraw per frame — that was the heavy part.)
         revealLayer.style.setProperty('--mx', smooth.x + 'px');
         revealLayer.style.setProperty('--my', smooth.y + 'px');
-        revealLayer.style.opacity = (mouse.x < -500) ? 0 : 1;
+        revealLayer.style.opacity = hovering ? 1 : 0;
       }
       reticle.style.transform = 'translate(' + (smooth.x - 32) + 'px,' + (smooth.y - 32) + 'px)';
-      requestAnimationFrame(loop);
+      var settled = Math.abs(smooth.x - targetX) < 0.5 && Math.abs(smooth.y - targetY) < 0.5;
+      if(hovering || !settled){
+        rafId = requestAnimationFrame(loop);
+      } else {
+        rafId = null; // fully stopped — no CPU/GPU cost until the mouse comes back
+      }
+    }
+    function ensureLoopRunning(){
+      if(rafId === null){ rafId = requestAnimationFrame(loop); }
     }
 
     if(canHover && !reduceMotion){
-      window.addEventListener('mousemove', function(e){
+      // Listening on the hero itself (not window) means this code does
+      // nothing at all while the cursor is anywhere else on the page.
+      hero.addEventListener('mousemove', function(e){
         mouse.x = e.clientX;
         mouse.y = e.clientY;
       });
-      hero.addEventListener('mouseenter', function(){ if(!carouselOpen){ reticle.style.opacity = 1; } });
+      hero.addEventListener('mouseenter', function(){
+        if(!carouselOpen){ reticle.style.opacity = 1; }
+        hovering = true;
+        ensureLoopRunning();
+      });
       hero.addEventListener('mouseleave', function(){
         reticle.style.opacity = 0;
-        mouse.x = -999; mouse.y = -999;
+        hovering = false;
+        ensureLoopRunning();
       });
-      requestAnimationFrame(loop);
     } else {
       // Touch / no-hover devices: show the inner architecture layer directly,
       // no drag-to-reveal gesture (it would fight page scroll).
